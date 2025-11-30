@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 import os
+import time # Added for sleep function in retry logic
 
 # --- Configuration ---
 # The model endpoint for the Gemini API
@@ -37,7 +38,8 @@ def get_api_key():
 
 def optimize_prompt(basic_prompt, api_key):
     """
-    Calls the Gemini API to generate an optimal prompt with detailed error reporting.
+    Calls the Gemini API to generate an optimal prompt with detailed error reporting,
+    including timeout and retry logic.
     """
     if not basic_prompt:
         st.error("Please enter a basic prompt.")
@@ -60,41 +62,73 @@ def optimize_prompt(basic_prompt, api_key):
     # Add API key to the URL parameters
     full_url = f"{API_URL}?key={api_key}"
 
-    try:
-        response = requests.post(full_url, headers=headers, data=json.dumps(payload))
-        
-        # --- Check for API HTTP Errors (4xx or 5xx) ---
-        if not response.ok:
-            st.error(f"API Request Failed: HTTP Status {response.status_code}")
-            try:
-                error_details = response.json()
-            except json.JSONDecodeError:
-                error_details = {"message": response.text}
-                
-            st.code(json.dumps(error_details, indent=2), language="json")
-            return f"API ERROR ({response.status_code}): {error_details.get('error', {}).get('message', 'Check console for details.')}"
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30  # Set a generous but strict timeout
 
-
-        # --- Successful Response Processing ---
-        result = response.json()
-        
-        # Safely extract the generated text
-        candidate = result.get('candidates', [{}])[0]
-        optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', None)
-
-        if optimized_text is None:
-            st.error("ERROR: Failed to extract text from a successful API response. The response structure may be unexpected or the model may have blocked the content.")
-            st.code(json.dumps(result, indent=2), language="json")
-            return "ERROR: Response content missing. See Streamlit console for raw JSON output."
+    for attempt in range(MAX_RETRIES):
+        try:
+            st.info(f"Attempt {attempt + 1} of {MAX_RETRIES}: Sending request...")
+            response = requests.post(
+                full_url, 
+                headers=headers, 
+                data=json.dumps(payload), 
+                timeout=TIMEOUT_SECONDS # Apply the strict timeout
+            )
             
-        return optimized_text
-        
-    except requests.exceptions.RequestException as e:
-        st.error(f"Network/Connection Error: {e}")
-        return f"CRITICAL ERROR: Network connection failed. Details: {e}"
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        return f"CRITICAL ERROR: Unexpected exception occurred. Details: {e}"
+            # --- Check for API HTTP Errors (4xx or 5xx) ---
+            if not response.ok:
+                st.error(f"API Request Failed: HTTP Status {response.status_code}")
+                try:
+                    error_details = response.json()
+                except json.JSONDecodeError:
+                    error_details = {"message": response.text}
+                    
+                st.code(json.dumps(error_details, indent=2), language="json")
+                
+                # If it's a 429 (Rate Limit), wait and retry
+                if response.status_code == 429 and attempt < MAX_RETRIES - 1:
+                    wait_time = 2 ** attempt
+                    st.warning(f"Rate limited (429). Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue # Go to the next attempt
+                else:
+                    # For other non-retryable errors (400, 403, 500) or last attempt failure, break out
+                    return f"API ERROR ({response.status_code}): {error_details.get('error', {}).get('message', 'Check console for details.')}"
+
+
+            # --- Successful Response Processing ---
+            result = response.json()
+            
+            # Safely extract the generated text
+            candidate = result.get('candidates', [{}])[0]
+            optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', None)
+
+            if optimized_text is None:
+                st.error("ERROR: Failed to extract text from a successful API response. The response structure may be unexpected or the model may have blocked the content.")
+                st.code(json.dumps(result, indent=2), language="json")
+                return "ERROR: Response content missing. See Streamlit console for raw JSON output."
+                
+            # If we reach here, the attempt was successful
+            return optimized_text
+            
+        except requests.exceptions.Timeout:
+            st.error(f"Attempt {attempt + 1}/{MAX_RETRIES} timed out after {TIMEOUT_SECONDS} seconds.")
+            if attempt < MAX_RETRIES - 1:
+                wait_time = 2 ** attempt
+                st.warning(f"Connection timed out. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue # Go to the next attempt
+            else:
+                return f"CRITICAL ERROR: Request timed out after {MAX_RETRIES} attempts. Check your network connection and API usage limits."
+                
+        except requests.exceptions.RequestException as e:
+            st.error(f"Network/Connection Error: {e}")
+            return f"CRITICAL ERROR: Network connection failed. Details: {e}"
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+            return f"CRITICAL ERROR: Unexpected exception occurred. Details: {e}"
+
+    return "ERROR: All optimization attempts failed due to recurring issues."
 
 
 # --- Streamlit UI ---
@@ -106,7 +140,7 @@ st.set_page_config(
 )
 
 st.title("💡 AI Optimal Prompt Generator")
-st.markdown("Transform your simple idea into a powerful, effective prompt for any LLM(ChatGPT, Gemini).")
+st.markdown("Transform your simple idea into a powerful, effective prompt for any Large Language Model.")
 
 # Get API Key and display status
 api_key = get_api_key()
@@ -133,6 +167,8 @@ if st.button("🚀 Generate Optimal Prompt", type="primary", use_container_width
     with st.spinner('Generating and optimizing the prompt...'):
         result = optimize_prompt(basic_prompt, api_key)
         st.session_state.optimized_prompt = result
+        # Force a rerun to update the text area immediately
+        st.rerun()
         
 # Output Area
 st.subheader("2. Optimized Prompt Result")
@@ -145,7 +181,7 @@ optimized_display = st.text_area(
 )
 
 # Copy button using st.empty for better placement
-if optimized_display.strip() and not optimized_display.startswith("ERROR"):
+if optimized_display.strip() and not optimized_display.startswith("ERROR") and not optimized_display.startswith("Please enter"):
     if st.button("📋 Copy Optimized Prompt", use_container_width=False):
         st.code(optimized_display, language='text')
         st.success("Copied to clipboard! (Note: Streamlit's clipboard functionality varies; manually copying from the text box is often more reliable.)")
@@ -154,7 +190,7 @@ st.markdown("""
 ---
 ### Next Steps
 If the output box now shows an **ERROR** message, please use that message to troubleshoot:
-* **"API Key not configured"**: You need to fix your local setup (See previous instructions for setting the `GEMINI_API_KEY` environment variable or `secrets.toml` file).
-* **"API ERROR (4xx)"**: Your API key might be invalid or restricted.
-* **"Network/Connection Error"**: Indicates a connectivity issue.
+* **"API Key not configured"**: Fix your local setup (set the `GEMINI_API_KEY` env var or `secrets.toml` file).
+* **"API ERROR (400, 403, 429, 500)"**: This confirms an issue with your key, quota, or the request itself. This likely confirms your quota guess.
+* **"CRITICAL ERROR: Request timed out"**: Indicates the server is unreachable or too slow.
 """)
