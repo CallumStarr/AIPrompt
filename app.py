@@ -39,7 +39,7 @@ def get_api_key():
 def optimize_prompt(basic_prompt, api_key):
     """
     Calls the Gemini API to generate an optimal prompt with detailed error reporting,
-    including timeout and retry logic.
+    including timeout and retry logic, and a final check for empty content.
     """
     if not basic_prompt:
         st.error("Please enter a basic prompt.")
@@ -87,7 +87,7 @@ def optimize_prompt(basic_prompt, api_key):
                 
                 # If it's a 429 (Rate Limit), wait and retry
                 if response.status_code == 429 and attempt < MAX_RETRIES - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2 ** (attempt + 1)
                     st.warning(f"Rate limited (429). Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                     continue # Go to the next attempt
@@ -103,10 +103,11 @@ def optimize_prompt(basic_prompt, api_key):
             candidate = result.get('candidates', [{}])[0]
             optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', None)
 
-            if optimized_text is None:
-                st.error("ERROR: Failed to extract text from a successful API response. The response structure may be unexpected or the model may have blocked the content.")
+            # --- FINAL CHECK FOR EMPTY CONTENT ---
+            if not optimized_text or optimized_text.strip() == "":
+                st.error("WARNING: API returned success (200), but the generated content was empty. This may indicate content violation, safety block, or an ambiguous prompt.")
                 st.code(json.dumps(result, indent=2), language="json")
-                return "ERROR: Response content missing. See Streamlit console for raw JSON output."
+                return "WARNING: Empty response received. Try a different prompt or check the raw JSON output above for safety blocks."
                 
             # If we reach here, the attempt was successful
             return optimized_text
@@ -114,7 +115,7 @@ def optimize_prompt(basic_prompt, api_key):
         except requests.exceptions.Timeout:
             st.error(f"Attempt {attempt + 1}/{MAX_RETRIES} timed out after {TIMEOUT_SECONDS} seconds.")
             if attempt < MAX_RETRIES - 1:
-                wait_time = 2 ** attempt
+                wait_time = 2 ** (attempt + 1)
                 st.warning(f"Connection timed out. Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 continue # Go to the next attempt
@@ -164,6 +165,8 @@ if 'optimized_prompt' not in st.session_state:
 
 # Button to trigger optimization
 if st.button("🚀 Generate Optimal Prompt", type="primary", use_container_width=True, disabled=not api_key):
+    # Clear previous messages
+    st.session_state.optimized_prompt = ""
     with st.spinner('Generating and optimizing the prompt...'):
         result = optimize_prompt(basic_prompt, api_key)
         st.session_state.optimized_prompt = result
@@ -181,16 +184,17 @@ optimized_display = st.text_area(
 )
 
 # Copy button using st.empty for better placement
-if optimized_display.strip() and not optimized_display.startswith("ERROR") and not optimized_display.startswith("Please enter"):
+if optimized_display.strip() and not optimized_display.startswith("ERROR") and not optimized_display.startswith("WARNING") and not optimized_display.startswith("Please enter"):
     if st.button("📋 Copy Optimized Prompt", use_container_width=False):
         st.code(optimized_display, language='text')
         st.success("Copied to clipboard! (Note: Streamlit's clipboard functionality varies; manually copying from the text box is often more reliable.)")
 
 st.markdown("""
 ---
-### Next Steps
-If the output box now shows an **ERROR** message, please use that message to troubleshoot:
-* **"API Key not configured"**: Fix your local setup (set the `GEMINI_API_KEY` env var or `secrets.toml` file).
-* **"API ERROR (400, 403, 429, 500)"**: This confirms an issue with your key, quota, or the request itself. This likely confirms your quota guess.
-* **"CRITICAL ERROR: Request timed out"**: Indicates the server is unreachable or too slow.
+### Next Steps for Diagnosis
+If the prompt box is still blank or is not updating, this is a very unusual Streamlit rendering bug. If you now see a **WARNING** or **ERROR** message, please report it!
+
+* **If you see "WARNING: Empty response received..."**: The API call succeeded, but the model returned no content. Try a different, simpler prompt.
+* **If you see "CRITICAL ERROR: Request timed out..."**: This confirms a slow connection or a severe quota block.
+* **If it's STILL blank**: The issue is outside the Python logic and likely a browser/Streamlit rendering bug. You may need to clear your browser cache or try a different browser.
 """)
