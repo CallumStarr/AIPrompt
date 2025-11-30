@@ -96,20 +96,25 @@ def optimize_prompt(basic_prompt, api_key):
                     return f"API ERROR ({response.status_code}): {error_details.get('error', {}).get('message', 'Check console for details.')}"
 
 
-            # --- Successful Response Processing ---
+            # --- Successful Response Processing (200 OK) ---
             result = response.json()
             
             # Safely extract the generated text
             candidate = result.get('candidates', [{}])[0]
             optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', None)
 
-            # --- FINAL CHECK FOR EMPTY CONTENT ---
-            if not optimized_text or optimized_text.strip() == "":
-                st.error("WARNING: API returned success (200), but the generated content was empty. This may indicate content violation, safety block, or an ambiguous prompt.")
+            # --- FINAL CHECK FOR EMPTY/NULL CONTENT ---
+            if optimized_text is None:
+                st.error("DEBUG ERROR: Content extraction failed (optimized_text is None). Check the raw JSON below.")
+                st.code(json.dumps(result, indent=2), language="json")
+                return "CRITICAL DEBUG: Content extraction failed. See raw JSON above."
+                
+            if optimized_text.strip() == "":
+                st.error("WARNING: API returned success (200), but the generated content was an empty string. This may indicate content violation, safety block, or an ambiguous prompt.")
                 st.code(json.dumps(result, indent=2), language="json")
                 return "WARNING: Empty response received. Try a different prompt or check the raw JSON output above for safety blocks."
                 
-            # If we reach here, the attempt was successful
+            # If we reach here, the attempt was successful and we have text
             return optimized_text
             
         except requests.exceptions.Timeout:
@@ -184,7 +189,7 @@ optimized_display = st.text_area(
 )
 
 # Copy button using st.empty for better placement
-if optimized_display.strip() and not optimized_display.startswith("ERROR") and not optimized_display.startswith("WARNING") and not optimized_display.startswith("Please enter"):
+if optimized_display.strip() and not optimized_display.startswith("ERROR") and not optimized_display.startswith("WARNING") and not optimized_display.startswith("CRITICAL DEBUG") and not optimized_display.startswith("Please enter"):
     if st.button("📋 Copy Optimized Prompt", use_container_width=False):
         st.code(optimized_display, language='text')
         st.success("Copied to clipboard! (Note: Streamlit's clipboard functionality varies; manually copying from the text box is often more reliable.)")
@@ -192,9 +197,10 @@ if optimized_display.strip() and not optimized_display.startswith("ERROR") and n
 st.markdown("""
 ---
 ### Next Steps for Diagnosis
-If the prompt box is still blank or is not updating, this is a very unusual Streamlit rendering bug. If you now see a **WARNING** or **ERROR** message, please report it!
+**CRITICAL:** Please run the app one more time with this code. If the output box is still blank, try a different browser or clear your cache, as the issue would be a severe rendering bug outside the Python logic.
 
-* **If you see "WARNING: Empty response received..."**: The API call succeeded, but the model returned no content. Try a different, simpler prompt.
-* **If you see "CRITICAL ERROR: Request timed out..."**: This confirms a slow connection or a severe quota block.
-* **If it's STILL blank**: The issue is outside the Python logic and likely a browser/Streamlit rendering bug. You may need to clear your browser cache or try a different browser.
+If you now see a message, please report it:
+* **"WARNING: Empty response received..."**: The API call succeeded, but the model blocked the content or returned nothing. Try a different prompt (e.g., "Describe a perfect vacation").
+* **"CRITICAL DEBUG: Content extraction failed..."**: This means the API response JSON structure was not what the code expected.
+* **"CRITICAL ERROR: Request timed out..."**: This confirms a severe network or quota issue.
 """)
