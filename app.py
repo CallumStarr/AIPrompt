@@ -37,7 +37,7 @@ def get_api_key():
 
 def optimize_prompt(basic_prompt, api_key):
     """
-    Calls the Gemini API to generate an optimal prompt.
+    Calls the Gemini API to generate an optimal prompt with detailed error reporting.
     """
     if not basic_prompt:
         st.error("Please enter a basic prompt.")
@@ -45,7 +45,7 @@ def optimize_prompt(basic_prompt, api_key):
         
     if not api_key:
         st.error("API Key not configured. Please set the GEMINI_API_KEY secret.")
-        return "API Key not configured."
+        return "ERROR: API Key not configured. Check the status box above."
 
     headers = {
         'Content-Type': 'application/json'
@@ -62,22 +62,39 @@ def optimize_prompt(basic_prompt, api_key):
 
     try:
         response = requests.post(full_url, headers=headers, data=json.dumps(payload))
-        response.raise_for_status() # Raises an HTTPError if the status is 4xx or 5xx
         
+        # --- Check for API HTTP Errors (4xx or 5xx) ---
+        if not response.ok:
+            st.error(f"API Request Failed: HTTP Status {response.status_code}")
+            try:
+                error_details = response.json()
+            except json.JSONDecodeError:
+                error_details = {"message": response.text}
+                
+            st.code(json.dumps(error_details, indent=2), language="json")
+            return f"API ERROR ({response.status_code}): {error_details.get('error', {}).get('message', 'Check console for details.')}"
+
+
+        # --- Successful Response Processing ---
         result = response.json()
         
         # Safely extract the generated text
         candidate = result.get('candidates', [{}])[0]
-        optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', 'Error: Could not extract text from API response.')
-        
+        optimized_text = candidate.get('content', {}).get('parts', [{}])[0].get('text', None)
+
+        if optimized_text is None:
+            st.error("ERROR: Failed to extract text from a successful API response. The response structure may be unexpected or the model may have blocked the content.")
+            st.code(json.dumps(result, indent=2), language="json")
+            return "ERROR: Response content missing. See Streamlit console for raw JSON output."
+            
         return optimized_text
         
     except requests.exceptions.RequestException as e:
-        st.error(f"Error connecting to the Gemini API: {e}")
-        return f"API Error: {e}"
+        st.error(f"Network/Connection Error: {e}")
+        return f"CRITICAL ERROR: Network connection failed. Details: {e}"
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
-        return f"Unexpected Error: {e}"
+        return f"CRITICAL ERROR: Unexpected exception occurred. Details: {e}"
 
 
 # --- Streamlit UI ---
@@ -89,12 +106,14 @@ st.set_page_config(
 )
 
 st.title("💡 AI Optimal Prompt Generator")
-st.markdown("Transform your simple idea into a powerful, effective prompt for any Large Language Model.")
+st.markdown("Transform your simple idea into a powerful, effective prompt for any LLM(ChatGPT, Gemini).")
 
-# Get API Key
+# Get API Key and display status
 api_key = get_api_key()
-if not api_key:
-    st.warning("Please set your `GEMINI_API_KEY` in Streamlit secrets or environment variables to run the optimizer.")
+if api_key:
+    st.success("✅ Gemini API Key Loaded. Ready to run.")
+else:
+    st.warning("⚠️ Gemini API Key NOT FOUND. Please set your `GEMINI_API_KEY` environment variable or secret file to enable generation.")
     
 # Input Area
 st.subheader("1. Enter Your Basic Prompt Idea")
@@ -126,16 +145,16 @@ optimized_display = st.text_area(
 )
 
 # Copy button using st.empty for better placement
-if optimized_display.strip():
+if optimized_display.strip() and not optimized_display.startswith("ERROR"):
     if st.button("📋 Copy Optimized Prompt", use_container_width=False):
         st.code(optimized_display, language='text')
         st.success("Copied to clipboard! (Note: Streamlit's clipboard functionality varies; manually copying from the text box is often more reliable.)")
 
 st.markdown("""
 ---
-### How to Deploy
-1.  **Save** this code as `app.py`.
-2.  **Create** the `requirements.txt` file below.
-3.  **Set the API Key:** Deploy the app and set a Streamlit secret named `GEMINI_API_KEY` with your actual Google AI Studio API key.
-4.  **Deploy** to Streamlit Cloud!
+### Next Steps
+If the output box now shows an **ERROR** message, please use that message to troubleshoot:
+* **"API Key not configured"**: You need to fix your local setup (See previous instructions for setting the `GEMINI_API_KEY` environment variable or `secrets.toml` file).
+* **"API ERROR (4xx)"**: Your API key might be invalid or restricted.
+* **"Network/Connection Error"**: Indicates a connectivity issue.
 """)
