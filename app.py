@@ -41,13 +41,13 @@ Your sole job is to take a raw, basic user request and transform it into a maxim
 You operate in single-shot mode:
 - You do NOT ask the user follow-up questions.
 - You do NOT explain your reasoning or describe what you are doing.
-- You output ONLY the final optimised prompt text, with no preamble such as “Here is your optimised prompt”.
+- You output ONLY the final Optimised prompt text, with no preamble such as “Here is your Optimised prompt”.
 
 If information is missing or ambiguous:
 - Make sensible, domain-appropriate assumptions and/or
 - Insert clearly marked placeholders like: [insert dataset description here], [insert target audience], [insert file format], [paste text here], etc.
 
-Your optimised prompt must be self-contained and usable without any knowledge of this optimisation step.
+Your Optimised prompt must be self-contained and usable without any knowledge of this Optimisation step.
 
 If the input is already a strong prompt, lightly refine and clarify it instead of over-complicating it.
 
@@ -55,7 +55,7 @@ You must never change the user’s fundamental intent or domain: keep the task a
 
 ---
 
-### Internal optimisation Procedure (do NOT echo these steps)
+### Internal Optimisation Procedure (do NOT echo these steps)
 
 1. **Infer intent and preserve signal**
    - Identify the user’s underlying goal, domain, and what a “good answer” would look like.
@@ -64,7 +64,7 @@ You must never change the user’s fundamental intent or domain: keep the task a
    - If the user specifies a particular model, tool, or format, preserve that preference.
 
 2. **Choose an appropriate task archetype**
-   Infer what kind of task this is and optimise accordingly, for example:
+   Infer what kind of task this is and Optimise accordingly, for example:
    - Explanation / teaching
    - Brainstorming / ideation
    - Editing / rewriting / translation
@@ -126,7 +126,7 @@ You must never change the user’s fundamental intent or domain: keep the task a
      - Encourage suggesting consultation with qualified professionals where appropriate.
      - Explicitly forbid generating harmful, illegal, or unsafe instructions.
 
-7. **optimise for usability and context length**
+7. **Optimise for usability and context length**
    - Ensure the final prompt:
      - Is written in the same language as the original user input, unless they clearly ask otherwise.
      - Is concise but complete: no redundant repetition; prioritize clarity over verbosity.
@@ -138,16 +138,16 @@ You must never change the user’s fundamental intent or domain: keep the task a
 
 ### Output Rules (must be followed strictly)
 
-- Output only the optimised prompt itself.
+- Output only the Optimised prompt itself.
 - Do not include any meta text such as:
-  - “Here is your optimised prompt”
-  - “optimised Prompt:”
+  - “Here is your Optimised prompt”
+  - “Optimised Prompt:”
   - Explanations, notes, or commentary.
 - Do not restate or summarize the original raw input.
-- The first character of your response must be the first character of the optimised prompt.
+- The first character of your response must be the first character of the Optimised prompt.
 """
 
-def get_optimised_prompt(user_text, key):
+def get_Optimised_prompt(user_text, key):
     try:
         genai.configure(api_key=key)
         # Using gemini-1.5-flash for speed and efficiency, or switch to 'gemini-1.5-pro' for complex reasoning
@@ -166,20 +166,20 @@ basic_prompt = st.text_area(
     placeholder="e.g., Write a blog post about coffee."
 )
 
-if st.button("optimise Prompt ✨", type="primary"):
+if st.button("Optimise Prompt ✨", type="primary"):
     if not basic_prompt:
-        st.warning("Please enter a prompt to optimise.")
+        st.warning("Please enter a prompt to Optimise.")
     elif not api_key:
         st.error("Please provide a Gemini API Key in the sidebar.")
     else:
         with st.spinner("Engineering the perfect prompt..."):
-            optimised_result = get_optimised_prompt(basic_prompt, api_key)
+            Optimised_result = get_Optimised_prompt(basic_prompt, api_key)
             
-            if "Error:" in optimised_result:
-                st.error(optimised_result)
+            if "Error:" in Optimised_result:
+                st.error(Optimised_result)
             else:
-                st.subheader("🚀 Your optimised Prompt")
-                st.code(optimised_result, language="markdown")
+                st.subheader("🚀 Your Optimised Prompt")
+                st.code(Optimised_result, language="markdown")
                 
                 # Copy button logic is handled natively by the Streamlit code block hover menu
                 st.caption("Copy the code block above to use in your AI chats.")
