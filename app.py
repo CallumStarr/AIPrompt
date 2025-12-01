@@ -10,11 +10,11 @@ st.set_page_config(
 )
 
 # --- Header ---
-st.title("✨ Gemini Prompt Optimizer")
+st.title("✨ AI Prompt Optimizer")
 st.markdown(
     """
     Transform basic ideas into **expert-level prompts** using Google's Gemini AI. 
-    Enter your rough idea below, and we'll engineer it for maximum results.
+    Enter your rough idea below, and we'll engineer it for optimal results.
     """
 )
 
@@ -50,7 +50,7 @@ def get_optimized_prompt(user_text, key):
     try:
         genai.configure(api_key=key)
         # Using gemini-1.5-flash for speed and efficiency, or switch to 'gemini-1.5-pro' for complex reasoning
-        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=SYSTEM_INSTRUCTION)
+        model = genai.GenerativeModel('gemini-flash-latest', system_instruction=SYSTEM_INSTRUCTION)
         
         response = model.generate_content(user_text)
         return response.text
